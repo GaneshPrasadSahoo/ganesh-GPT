@@ -38,12 +38,12 @@ def get_vector_store(text_chunks):
     vector_store = FAISS.from_texts(text_chunks, embedding=embeddings)
     vector_store.save_local("faiss_index")
 
-# Function to load the conversational chain
+# Function to load the conversational chain for PDF Q&A
 def get_conversational_chain():
     prompt_template = """
     Answer the question as detailed as possible from the provided context. If the answer is not in
     the provided context, just say "answer is not available in the context" and don't provide a wrong answer.
-    
+
     Context:
     {context}
 
@@ -57,39 +57,57 @@ def get_conversational_chain():
     chain = load_qa_chain(model, chain_type="stuff", prompt=prompt)
     return chain
 
-# Function to process user question
-def user_input(user_question):
+# Function to process user question from PDFs
+def chat_with_pdf(user_question):
     embeddings = GoogleGenerativeAIEmbeddings(model="models/embedding-001")
     
     # Load FAISS vector store safely
-    new_db = FAISS.load_local("faiss_index", embeddings, allow_dangerous_deserialization=True)  # Use this only if you trust the file!
+    new_db = FAISS.load_local("faiss_index", embeddings, allow_dangerous_deserialization=True)
     
     docs = new_db.similarity_search(user_question)
     chain = get_conversational_chain()
     
     response = chain({"input_documents": docs, "question": user_question}, return_only_outputs=True)
     
-    st.write("Reply: ", response["output_text"])
+    st.write("📄 **PDF Response:** ", response["output_text"])
+
+# Function to chat with AI (general queries)
+def chat_with_ai(user_query):
+    model = ChatGoogleGenerativeAI(model="gemini-pro", temperature=0.7)
+    response = model.invoke(user_query)
+    
+    # Extract and display AI-generated content
+    st.write("🤖 **AI Response:** ", response.content)
 
 # Main Streamlit application
 def main():
-    st.set_page_config("Chat PDF")
-    st.header("Chat with PDF using Gemini💁")
+    st.set_page_config(page_title="Chat with PDF & AI")
+    st.header("GANESH GPT💁")
 
-    user_question = st.text_input("Ask a Question from the PDF Files")
+    # Tabs for different functionalities
+    tab1, tab2 = st.tabs(["📄 Chat with PDF", "🤖 Chat with AI"])
 
-    if user_question:
-        user_input(user_question)
+    with tab1:
+        st.subheader("Ask a Question from the PDF Files")
+        user_question = st.text_input("Enter your question based on uploaded PDFs")
+        if user_question:
+            chat_with_pdf(user_question)
 
-    with st.sidebar:
-        st.title("Menu:")
-        pdf_docs = st.file_uploader("Upload your PDF Files and Click on the Submit & Process Button", accept_multiple_files=True)
-        if st.button("Submit & Process"):
-            with st.spinner("Processing..."):
-                raw_text = get_pdf_text(pdf_docs)
-                text_chunks = get_text_chunks(raw_text)
-                get_vector_store(text_chunks)
-                st.success("Done")
+        with st.sidebar:
+            st.title("Menu:")
+            pdf_docs = st.file_uploader("Upload your PDF Files", accept_multiple_files=True)
+            if st.button("Submit & Process"):
+                with st.spinner("Processing..."):
+                    raw_text = get_pdf_text(pdf_docs)
+                    text_chunks = get_text_chunks(raw_text)
+                    get_vector_store(text_chunks)
+                    st.success("✅ PDFs processed successfully!")
+
+    with tab2:
+        st.subheader("Chat with AI 🤖")
+        ai_question = st.text_input("Ask anything to AI")
+        if ai_question:
+            chat_with_ai(ai_question)
 
 if __name__ == "__main__":
     main()
